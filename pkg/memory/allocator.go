@@ -23,6 +23,14 @@ type Block struct {
 	checksum uint64
 }
 
+// BitFlip represents a detected bit flip
+type BitFlip struct {
+	Offset      int64 `json:"offset"`
+	BitPosition int   `json:"bit_position"`
+	Expected    byte  `json:"expected"`
+	Actual      byte  `json:"actual"`
+}
+
 // NewManager creates a new memory manager
 func NewManager(size int64, alignment int, lockMemory bool) (*Manager, error) {
 	if size <= 0 {
@@ -89,7 +97,7 @@ func (m *Manager) allocateBlock(size int64) (*Block, error) {
 		size: size,
 	}
 
-	// Lock memory if requested (macOS uses mlock)
+	// Lock memory if requested (mlock for preventing swapping)
 	if m.lockMemory {
 		r1, _, errno := syscall.Syscall(syscall.SYS_MLOCK,
 			uintptr(unsafe.Pointer(&alignedData[0])),
@@ -111,6 +119,11 @@ func (m *Manager) GetBlocks() []*Block {
 // GetTotalSize returns the total allocated memory size
 func (m *Manager) GetTotalSize() int64 {
 	return m.size
+}
+
+// GetSize returns the size of the memory block
+func (b *Block) GetSize() int64 {
+	return b.size
 }
 
 // WritePattern writes a data pattern to a specific block
@@ -161,81 +174,24 @@ func (b *Block) VerifyPattern(pattern []byte) ([]BitFlip, error) {
 	return flips, nil
 }
 
-// BitFlip represents a detected bit flip
-type BitFlip struct {
-	Offset      int64 // Byte offset in the block
-	BitPosition int   // Bit position (0-7)
-	Expected    byte  // Expected bit value (0 or 1)
-	Actual      byte  // Actual bit value (0 or 1)
-}
-
-// String returns a human-readable representation of the bit flip
-func (bf *BitFlip) String() string {
-	return fmt.Sprintf("BitFlip{Offset: %d, Bit: %d, Expected: %d, Actual: %d}",
-		bf.Offset, bf.BitPosition, bf.Expected, bf.Actual)
-}
-
-// calculateChecksum calculates a simple checksum for the block
+// calculateChecksum computes a basic checksum for the block
 func (b *Block) calculateChecksum() uint64 {
-	var checksum uint64
-	for i := int64(0); i < b.size; i++ {
-		checksum += uint64(b.data[i])
-		checksum = (checksum << 1) | (checksum >> 63) // Rotate left
+	var sum uint64
+	for _, dataByte := range b.data {
+		sum += uint64(dataByte)
 	}
-	return checksum
+	return sum
 }
 
-// GetChecksum returns the current checksum
-func (b *Block) GetChecksum() uint64 {
-	return b.checksum
-}
-
-// VerifyChecksum checks if the current data matches the stored checksum
-func (b *Block) VerifyChecksum() bool {
-	return b.calculateChecksum() == b.checksum
-}
-
-// GetSize returns the block size in bytes
-func (b *Block) GetSize() int64 {
-	return b.size
-}
-
-// GetData returns the raw data slice (use with caution)
-func (b *Block) GetData() []byte {
-	return b.data
-}
-
-// Cleanup releases all allocated memory and unlocks if necessary
+// Cleanup releases all resources and unlocks memory
 func (m *Manager) Cleanup() {
 	for _, block := range m.blocks {
+		// Unlock memory if it was locked
 		if block.locked {
-			// Unlock memory
 			syscall.Syscall(syscall.SYS_MUNLOCK,
 				uintptr(unsafe.Pointer(&block.data[0])),
 				uintptr(block.size), 0)
 		}
 	}
 	m.blocks = nil
-	runtime.GC() // Force garbage collection to free memory
-}
-
-// GetStats returns memory allocation statistics
-func (m *Manager) GetStats() map[string]interface{} {
-	var totalSize int64
-	lockedBlocks := 0
-
-	for _, block := range m.blocks {
-		totalSize += block.size
-		if block.locked {
-			lockedBlocks++
-		}
-	}
-
-	return map[string]interface{}{
-		"total_blocks":  len(m.blocks),
-		"total_size":    totalSize,
-		"locked_blocks": lockedBlocks,
-		"alignment":     m.alignment,
-		"memory_locked": m.lockMemory,
-	}
 }

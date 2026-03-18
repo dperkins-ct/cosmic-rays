@@ -21,37 +21,47 @@ type Scanner struct {
 	stats         ScanStats
 }
 
-// ScanStats tracks scanning statistics
+// ScanStats tracks comprehensive scanning statistics with temporal analysis
 type ScanStats struct {
-	TotalScans       int64         `json:"total_scans"`
-	TotalBitFlips    int64         `json:"total_bit_flips"`
-	SingleBitFlips   int64         `json:"single_bit_flips"`
-	MultipleBitFlips int64         `json:"multiple_bit_flips"`
-	LastScanTime     time.Time     `json:"last_scan_time"`
-	ScanDuration     time.Duration `json:"scan_duration"`
-	BytesScanned     int64         `json:"bytes_scanned"`
-	mu               sync.RWMutex
+	TotalScans          int64         `json:"total_scans"`
+	TotalBitFlips       int64         `json:"total_bit_flips"`
+	SingleBitFlips      int64         `json:"single_bit_flips"`
+	MultipleBitFlips    int64         `json:"multiple_bit_flips"`
+	ECCCorrectableFlips int64         `json:"ecc_correctable_flips"`
+	CosmicRayCandidate  int64         `json:"cosmic_ray_candidates"`
+	BurstEvents         int64         `json:"burst_events"`
+	LastScanTime        time.Time     `json:"last_scan_time"`
+	ScanDuration        time.Duration `json:"scan_duration"`
+	BytesScanned        int64         `json:"bytes_scanned"`
+	BitFlipRate         float64       `json:"bit_flip_rate"`
+	CosmicRayRate       float64       `json:"cosmic_ray_rate"`
+	IsRunning           bool          `json:"is_running"`
+	mu                  sync.RWMutex
 }
 
 // Event represents a memory event (bit flip, scan completion, etc.)
 type Event struct {
-	Type       EventType            `json:"type"`
-	Timestamp  time.Time            `json:"timestamp"`
-	BlockIndex int                  `json:"block_index,omitempty"`
-	Pattern    patterns.PatternType `json:"pattern,omitempty"`
-	BitFlips   []memory.BitFlip     `json:"bit_flips,omitempty"`
-	Statistics interface{}          `json:"statistics,omitempty"`
+	Type           EventType            `json:"type"`
+	Timestamp      time.Time            `json:"timestamp"`
+	BlockIndex     int                  `json:"block_index,omitempty"`
+	Pattern        patterns.PatternType `json:"pattern,omitempty"`
+	BitFlips       []memory.BitFlip     `json:"bit_flips,omitempty"`
+	Statistics     interface{}          `json:"statistics,omitempty"`
+	CosmicRayScore float64              `json:"cosmic_ray_score,omitempty"`
 }
 
 // EventType represents the type of event
 type EventType string
 
 const (
-	EventBitFlip      EventType = "bit_flip"
-	EventScanComplete EventType = "scan_complete"
-	EventError        EventType = "error"
-	EventStarted      EventType = "started"
-	EventStopped      EventType = "stopped"
+	EventBitFlip       EventType = "bit_flip"
+	EventScanComplete  EventType = "scan_complete"
+	EventCosmicRay     EventType = "cosmic_ray_candidate"
+	EventBurst         EventType = "burst_detected"
+	EventECCCorrection EventType = "ecc_correction"
+	EventError         EventType = "error"
+	EventStarted       EventType = "started"
+	EventStopped       EventType = "stopped"
 )
 
 // EventListener receives events from the scanner
