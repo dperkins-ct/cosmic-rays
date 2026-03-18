@@ -310,3 +310,11 @@ MIT License - See LICENSE file for details.
 ---
 
 **Remember**: This tool demonstrates memory corruption detection techniques and provides educational insights into cosmic ray effects on computer memory. For serious cosmic ray research, use proper scientific equipment and statistical analysis methods.
+
+## TODOs
+- Integrate NOAA Data for cosmic events for listening mode
+- Add unit tests for 80% code coverage
+- Resolve issues with usage of `unsafe` pkg for the `injectior.go` script
+- Alter experiements to only run test type at a time to resolve injection calculation inaccuracies
+- Increase logging along the way as experiment runs
+- Update to include the time that it actually ran rather than the time that the config says it will run since the automatic exit is not functioning
