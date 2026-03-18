@@ -176,6 +176,7 @@ type ScanStats struct {
 	EventsPerMinute    float64       `json:"events_per_minute"`
 	AttributionEnabled bool          `json:"attribution_enabled"`
 	RunningTime        time.Duration `json:"running_time"`
+	InjectionStats     interface{}   `json:"injection_stats,omitempty"`
 }
 
 // NewScanner creates a new memory corruption scanner
@@ -233,6 +234,14 @@ func (s *Scanner) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to initialize memory: %w", err)
 	}
 
+	// Start the memory manager (this will start fault injection if enabled)
+	if err := s.memoryManager.Start(ctx); err != nil {
+		s.mutex.Lock()
+		s.active = false
+		s.mutex.Unlock()
+		return fmt.Errorf("failed to start memory manager: %w", err)
+	}
+
 	// Notify listeners that scanning started
 	s.notifyListeners(Event{
 		Type:      EventStarted,
@@ -265,6 +274,12 @@ func (s *Scanner) GetStats() ScanStats {
 		eventsPerMin = float64(s.eventCount) / minutesRunning
 	}
 
+	// Get injection stats if available
+	var injectionStats interface{}
+	if injector := s.memoryManager.GetInjector(); injector != nil {
+		injectionStats = injector.GetStats()
+	}
+
 	return ScanStats{
 		ScanCount:          s.scanCount,
 		EventCount:         s.eventCount,
@@ -273,6 +288,7 @@ func (s *Scanner) GetStats() ScanStats {
 		EventsPerMinute:    eventsPerMin,
 		AttributionEnabled: s.config.EnableAttribution,
 		RunningTime:        runningTime,
+		InjectionStats:     injectionStats,
 	}
 }
 
@@ -671,6 +687,11 @@ func (s *Scanner) performScan() error {
 
 		if len(bitFlips) > 0 {
 			totalBitFlips = append(totalBitFlips, bitFlips...)
+
+			// Update event counter for each bit flip
+			s.mutex.Lock()
+			s.eventCount += int64(len(bitFlips))
+			s.mutex.Unlock()
 
 			// Notify listeners of bit flips
 			for _, flip := range bitFlips {

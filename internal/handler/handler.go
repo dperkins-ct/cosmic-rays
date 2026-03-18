@@ -9,6 +9,7 @@ import (
 
 	"github.com/dperkins/cosmic-rays/internal/config"
 	"github.com/dperkins/cosmic-rays/pkg/detector"
+	"github.com/dperkins/cosmic-rays/pkg/injection"
 	"github.com/dperkins/cosmic-rays/pkg/memory"
 	"github.com/dperkins/cosmic-rays/pkg/output"
 )
@@ -161,6 +162,19 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 	fmt.Fprintf(w, "Total Events: %v\n", stats.EventCount)
 	fmt.Fprintf(w, "Scans Per Minute: %.2f\n", stats.ScansPerMinute)
 
+	// Display injection statistics if available
+	if stats.InjectionStats != nil {
+		if injStats, ok := stats.InjectionStats.(injection.InjectionStats); ok {
+			fmt.Fprintf(w, "\n--- Fault Injection Analysis ---\n")
+			fmt.Fprintf(w, "Injection Profile: %s\n", injStats.ActiveProfile)
+			fmt.Fprintf(w, "Total Injections: %d\n", injStats.TotalInjected)
+			fmt.Fprintf(w, "Injection Rate: %.2f per minute\n", injStats.InjectionRate)
+			if !injStats.LastInjection.IsZero() {
+				fmt.Fprintf(w, "Last Injection: %v\n", injStats.LastInjection.Format("15:04:05"))
+			}
+		}
+	}
+
 	if stats.EventCount > 0 {
 		fmt.Fprintf(w, "\n*** MEMORY EVENTS DETECTED! ***\n")
 		fmt.Fprintf(w, "NOTE: Events may be injected faults (in demo mode) or\n")
@@ -186,6 +200,7 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 		"events_per_minute":   stats.EventsPerMinute,
 		"attribution_enabled": stats.AttributionEnabled,
 		"running_time":        stats.RunningTime,
+		"injection_stats":     stats.InjectionStats,
 	}
 	experiment.logger.LogStatistics(statsMap)
 	fmt.Fprintf(w, "\nDetailed statistics logged to output directory.\n")

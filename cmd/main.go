@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	version = "1.0.0"
+	version = "1.3.0"
 	banner  = `
    ____ ___  ____  __  __ ___ ____   ____      _ __   ______  
   / ___/ _ \/ ___||  \/  |_ _/ ___| |  _ \    / \\ \ / / ___| 
@@ -74,7 +74,7 @@ func run(ctx context.Context, w io.Writer, args []string) error {
 	}
 
 	if !*quiet {
-		fmt.Fprintf(w, "Loaded configuration: %s\n", cfg)
+		fmt.Fprintf(w, "Loaded configuration: %v\n", cfg)
 		fmt.Fprintf(w, "Starting cosmic ray detection experiment...\n\n")
 	}
 

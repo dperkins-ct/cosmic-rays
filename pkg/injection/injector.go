@@ -77,6 +77,7 @@ func NewInjector(cfg config.InjectionConfig, memory uintptr, memoryLen int64) *I
 // Start begins the fault injection process
 func (i *Injector) Start(ctx context.Context) error {
 	if !i.config.Enabled {
+		fmt.Printf("Injection disabled in config\n")
 		return nil
 	}
 
@@ -88,6 +89,7 @@ func (i *Injector) Start(ctx context.Context) error {
 	i.active = true
 	i.mutex.Unlock()
 
+	fmt.Printf("Starting fault injector with profile: %s, rate: %.1f/min\n", i.config.Profile, i.config.Rate)
 	go i.runInjectionLoop(ctx)
 	return nil
 }
@@ -153,16 +155,28 @@ func (i *Injector) runSingleProfile(ctx context.Context) {
 	}
 
 	interval := time.Duration(60.0/i.config.Rate) * time.Second
+	fmt.Printf("Starting injection with rate %.1f/min (interval: %v)\n", i.config.Rate, interval)
+
+	// Perform immediate injection for demo responsiveness
+	if err := i.injectSingleBitFlip(); err != nil {
+		fmt.Printf("Initial injection error: %v\n", err)
+	} else {
+		fmt.Printf("Initial injection performed\n")
+	}
+
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			fmt.Printf("Injection stopped by context\n")
 			return
 		case <-ticker.C:
 			if err := i.injectSingleBitFlip(); err != nil {
 				fmt.Printf("Injection error: %v\n", err)
+			} else {
+				fmt.Printf("Injection performed (total: %d)\n", i.injectedCount)
 			}
 		}
 	}
