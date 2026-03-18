@@ -225,6 +225,20 @@ func (s *Scanner) Start(ctx context.Context) error {
 	s.scanStartTime = time.Now()
 	s.mutex.Unlock()
 
+	// Initialize memory with patterns before starting
+	if err := s.initializeMemory(); err != nil {
+		s.mutex.Lock()
+		s.active = false
+		s.mutex.Unlock()
+		return fmt.Errorf("failed to initialize memory: %w", err)
+	}
+
+	// Notify listeners that scanning started
+	s.notifyListeners(Event{
+		Type:      EventStarted,
+		Timestamp: time.Now(),
+	})
+
 	go s.scanLoop(ctx)
 	return nil
 }
@@ -270,16 +284,31 @@ func (s *Scanner) scanLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			s.notifyListeners(Event{
+				Type:      EventStopped,
+				Timestamp: time.Now(),
+			})
 			return
 		case <-ticker.C:
 			s.mutex.RLock()
 			if !s.active {
 				s.mutex.RUnlock()
+				s.notifyListeners(Event{
+					Type:      EventStopped,
+					Timestamp: time.Now(),
+				})
 				return
 			}
 			s.mutex.RUnlock()
 
-			s.performScan()
+			if err := s.performScan(); err != nil {
+				log.Printf("Scan error: %v", err)
+				s.notifyListeners(Event{
+					Type:       EventError,
+					Timestamp:  time.Now(),
+					Statistics: map[string]interface{}{"error": err.Error()},
+				})
+			}
 		}
 	}
 }
@@ -614,6 +643,12 @@ func (s *Scanner) initializeMemory() error {
 
 // performScan scans all memory blocks for bit flips
 func (s *Scanner) performScan() error {
+	// Update scan counter
+	s.mutex.Lock()
+	s.scanCount++
+	s.lastScan = time.Now()
+	s.mutex.Unlock()
+
 	startTime := time.Now()
 	blocks := s.memoryManager.GetBlocks()
 
@@ -638,17 +673,15 @@ func (s *Scanner) performScan() error {
 			totalBitFlips = append(totalBitFlips, bitFlips...)
 
 			// Notify listeners of bit flips
-			s.notifyListeners(Event{
-				Type:       EventBitFlip,
-				Timestamp:  time.Now(),
-				BlockIndex: blockIndex,
-				Pattern:    patternType,
-				BitFlips:   bitFlips,
-			})
-
-			// Re-initialize the corrupted block
-			if err := block.WritePattern(pattern); err != nil {
-				return fmt.Errorf("failed to reinitialize block %d after corruption: %w", blockIndex, err)
+			for _, flip := range bitFlips {
+				s.notifyListeners(Event{
+					Type:        EventBitFlip,
+					Offset:      flip.Offset,
+					OldValue:    flip.OriginalValue,
+					NewValue:    flip.CurrentValue,
+					Timestamp:   flip.DetectedAt,
+					PatternType: patternType,
+				})
 			}
 		}
 	}
