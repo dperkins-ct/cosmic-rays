@@ -7,6 +7,33 @@ import (
 	"time"
 )
 
+// Duration wraps time.Duration to support both string and nanosecond unmarshaling
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalJSON allows Duration to accept both string ("1m30s") and number (nanoseconds) formats
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first ("1m30s" format)
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		duration, err := time.ParseDuration(str)
+		if err != nil {
+			return fmt.Errorf("invalid duration string %q: %w", str, err)
+		}
+		d.Duration = duration
+		return nil
+	}
+
+	// Fall back to nanoseconds (number format)
+	var ns int64
+	if err := json.Unmarshal(data, &ns); err != nil {
+		return fmt.Errorf("duration must be a string (\"1m30s\") or number (nanoseconds): %w", err)
+	}
+	d.Duration = time.Duration(ns)
+	return nil
+}
+
 // Config represents the experiment configuration
 type Config struct {
 	// Memory configuration
@@ -15,19 +42,19 @@ type Config struct {
 	UseLockedMemory bool  `json:"use_locked_memory"` // Use mlock to prevent swapping
 
 	// Experiment parameters
-	Duration      time.Duration `json:"duration"`        // Experiment duration
-	ScanInterval  time.Duration `json:"scan_interval"`   // How often to scan memory
-	PatternsToUse []string      `json:"patterns_to_use"` // Which patterns to test
+	Duration      Duration `json:"duration"`        // Experiment duration
+	ScanInterval  Duration `json:"scan_interval"`   // How often to scan memory
+	PatternsToUse []string `json:"patterns_to_use"` // Which patterns to test
 
 	// Detection settings
 	EnableECCDetection bool    `json:"enable_ecc_detection"` // Detect ECC memory
 	FlipThreshold      float64 `json:"flip_threshold"`       // Statistical threshold for cosmic ray detection
 
 	// Output settings
-	OutputDir           string        `json:"output_dir"`           // Directory for output files
-	LogLevel            string        `json:"log_level"`            // Logging level
-	EnableVisualization bool          `json:"enable_visualization"` // Generate plots
-	ReportInterval      time.Duration `json:"report_interval"`      // How often to generate reports
+	OutputDir           string   `json:"output_dir"`           // Directory for output files
+	LogLevel            string   `json:"log_level"`            // Logging level
+	EnableVisualization bool     `json:"enable_visualization"` // Generate plots
+	ReportInterval      Duration `json:"report_interval"`      // How often to generate reports
 
 	// Geographic/Environmental
 	Latitude  float64 `json:"latitude"`  // Geographic latitude for cosmic ray flux correlation
@@ -41,15 +68,15 @@ func DefaultConfig() *Config {
 		MemorySize:          10 * 1024 * 1024 * 1024, // 10GB
 		MemoryAlignment:     4096,                    // Page-aligned
 		UseLockedMemory:     true,
-		Duration:            24 * time.Hour,
-		ScanInterval:        time.Second,
+		Duration:            Duration{24 * time.Hour},
+		ScanInterval:        Duration{time.Second},
 		PatternsToUse:       []string{"alternating", "checksum", "random", "known"},
 		EnableECCDetection:  true,
 		FlipThreshold:       0.95, // 95% confidence
 		OutputDir:           "./output",
 		LogLevel:            "info",
 		EnableVisualization: true,
-		ReportInterval:      time.Hour,
+		ReportInterval:      Duration{time.Hour},
 		Latitude:            37.7749, // Default to San Francisco
 		Longitude:           -122.4194,
 		Altitude:            52.0,
@@ -95,11 +122,11 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("memory size too large (>100GB)")
 	}
 
-	if c.Duration <= 0 {
+	if c.Duration.Duration <= 0 {
 		return fmt.Errorf("experiment duration must be positive")
 	}
 
-	if c.ScanInterval <= 0 {
+	if c.ScanInterval.Duration <= 0 {
 		return fmt.Errorf("scan interval must be positive")
 	}
 
@@ -132,8 +159,8 @@ func (c *Config) String() string {
 	return fmt.Sprintf("Config{MemorySize: %d bytes (%.1f GB), Duration: %v, ScanInterval: %v, Patterns: %v}",
 		c.MemorySize,
 		float64(c.MemorySize)/(1024*1024*1024),
-		c.Duration,
-		c.ScanInterval,
+		c.Duration.Duration,
+		c.ScanInterval.Duration,
 		c.PatternsToUse,
 	)
 }

@@ -78,7 +78,7 @@ func (h *ExperimentHandler) InitializeExperiment() (*Experiment, error) {
 	}
 
 	// Initialize detector
-	det, err := detector.NewScanner(memMgr, cfg.ScanInterval, cfg.PatternsToUse)
+	det, err := detector.NewScanner(memMgr, cfg.ScanInterval.Duration, cfg.PatternsToUse)
 	if err != nil {
 		memMgr.Cleanup()
 		return nil, fmt.Errorf("failed to initialize detector: %w", err)
@@ -103,10 +103,14 @@ func (h *ExperimentHandler) InitializeExperiment() (*Experiment, error) {
 
 // RunExperiment runs the cosmic ray detection experiment with context
 func (h *ExperimentHandler) RunExperiment(ctx context.Context, w io.Writer, experiment *Experiment) error {
+	// Create a context that will cancel after the experiment duration
+	expCtx, cancel := context.WithTimeout(ctx, experiment.config.Duration.Duration)
+	defer cancel()
+
 	// Run the experiment
 	resultChan := make(chan error, 1)
 	go func() {
-		resultChan <- experiment.Run()
+		resultChan <- experiment.RunWithContext(expCtx)
 	}()
 
 	// Wait for completion or context cancellation
@@ -115,12 +119,13 @@ func (h *ExperimentHandler) RunExperiment(ctx context.Context, w io.Writer, expe
 		if err != nil {
 			return fmt.Errorf("experiment failed: %w", err)
 		}
-		fmt.Fprintf(w, "Experiment completed successfully!\n")
+		fmt.Fprintf(w, "\n=== EXPERIMENT COMPLETED SUCCESSFULLY ===\n")
+		h.printHumanResults(w, experiment)
 	case <-ctx.Done():
-		fmt.Fprintf(w, "\nReceived shutdown signal, shutting down gracefully...\n")
+		fmt.Fprintf(w, "\n=== EXPERIMENT INTERRUPTED ===\n")
 		experiment.Stop()
 		<-resultChan // Wait for experiment to stop
-		fmt.Fprintf(w, "Shutdown complete.\n")
+		h.printHumanResults(w, experiment)
 	}
 
 	return nil
@@ -139,8 +144,42 @@ func (h *ExperimentHandler) Run(ctx context.Context, w io.Writer) error {
 	return h.RunExperiment(ctx, w, experiment)
 }
 
-// Run starts the experiment detection process
-func (e *Experiment) Run() error {
+// printHumanResults formats and displays human-readable experiment results
+func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experiment) {
+	stats := experiment.detector.GetStats()
+
+	fmt.Fprintf(w, "\n=== EXPERIMENT RESULTS ===\n")
+	fmt.Fprintf(w, "Memory Monitored: %.1f MB\n", float64(experiment.config.MemorySize)/(1024*1024))
+	fmt.Fprintf(w, "Duration: %v\n", experiment.config.Duration.Duration)
+	fmt.Fprintf(w, "Total Scans: %v\n", stats["total_scans"])
+	fmt.Fprintf(w, "Bytes Scanned: %v\n", stats["bytes_scanned"])
+	fmt.Fprintf(w, "\n--- Bit Flip Analysis ---\n")
+	fmt.Fprintf(w, "Total Bit Flips: %v\n", stats["total_bit_flips"])
+	fmt.Fprintf(w, "Single Bit Flips: %v\n", stats["single_bit_flips"])
+	fmt.Fprintf(w, "Multi Bit Flips: %v\n", stats["multiple_bit_flips"])
+	fmt.Fprintf(w, "Flip Rate: %.6f per bit\n", stats["bit_flip_rate"])
+
+	if flips, ok := stats["total_bit_flips"].(int64); ok && flips > 0 {
+		fmt.Fprintf(w, "\n*** POTENTIAL COSMIC RAY EVENTS DETECTED! ***\n")
+		fmt.Fprintf(w, "NOTE: Most detected 'flips' are likely memory initialization\n")
+		fmt.Fprintf(w, "artifacts rather than actual cosmic ray events.\n")
+		fmt.Fprintf(w, "\nFor true cosmic ray detection, consider:\n")
+		fmt.Fprintf(w, "- ECC memory to distinguish single vs multi-bit errors\n")
+		fmt.Fprintf(w, "- Memory protection to prevent program interference\n")
+		fmt.Fprintf(w, "- Longer observation periods (days/weeks)\n")
+		fmt.Fprintf(w, "- Statistical analysis of flip patterns\n")
+	} else {
+		fmt.Fprintf(w, "\n*** No bit flips detected during monitoring period ***\n")
+		fmt.Fprintf(w, "This suggests good memory stability or short observation time.\n")
+	}
+
+	// Log to file as well
+	experiment.logger.LogStatistics(stats)
+	fmt.Fprintf(w, "\nDetailed statistics logged to output directory.\n")
+}
+
+// RunWithContext starts the experiment detection process with context support
+func (e *Experiment) RunWithContext(ctx context.Context) error {
 	// Start the detection process
 	if err := e.detector.Start(e.stopChan); err != nil {
 		return fmt.Errorf("failed to start detector: %w", err)
@@ -148,18 +187,29 @@ func (e *Experiment) Run() error {
 
 	e.logger.Info("Cosmic ray detection experiment started", map[string]interface{}{
 		"memory_size": e.config.MemorySize,
-		"duration":    e.config.Duration,
+		"duration":    e.config.Duration.Duration,
 		"patterns":    e.config.PatternsToUse,
 	})
 
-	// Main experiment loop - will be implemented with actual detection logic
-	// For now, just run for the specified duration
+	// Main experiment loop - run until context is done
 	select {
+	case <-ctx.Done():
+		if ctx.Err() == context.DeadlineExceeded {
+			e.logger.Info("Experiment completed - duration reached", map[string]interface{}{
+				"duration": e.config.Duration.Duration,
+			})
+		} else {
+			e.logger.Info("Experiment stopped by user", nil)
+		}
+		return nil
 	case <-e.stopChan:
 		e.logger.Info("Experiment stopped by user", nil)
+		return nil
 	}
+}
 
-	return nil
+func (e *Experiment) Run() error {
+	return e.RunWithContext(context.Background())
 }
 
 // Stop gracefully stops the experiment
