@@ -1,0 +1,95 @@
+# Build artifacts
+cosmic-rays
+cosmic-rays.exe
+cosmic-rays-*
+
+# Go build cache
+.cache/
+
+# Test coverage
+*.cover
+coverage.out
+
+# Output directory
+output/
+*.log
+*.json
+*.html
+*.csv
+*.png
+*.svg
+
+# Configuration files (except example)
+config.json
+*.config.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Memory dumps and core files
+*.core
+core.*
+*.dmp
+
+# Log files
+*.log.*
+*.log
+
+# Test data
+testdata/generated/
+testdata/output/
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Runtime files
+*.pid
+*.sock
+
+# Certificate files
+*.pem
+*.key
+*.crt
+*.p12
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Node modules (for any web dashboard)
+node_modules/
+
+# Python cache (for any analysis scripts)
+__pycache__/
+*.pyc
+*.pyo
+
+# R files (for statistical analysis)
+.RData
+.Rhistory
+
+# Documentation build
+docs/_build/
+site/
