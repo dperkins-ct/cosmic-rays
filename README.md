@@ -1,219 +1,312 @@
-# Cosmic Ray Memory Bit-Flip Detection System
+# Memory Corruption Detection System
 
-A scientific experiment to detect cosmic ray induced memory errors by monitoring allocated memory blocks for spontaneous bit flips.
+A system for detecting memory corruption events with optional heuristic cosmic ray attribution. This tool is designed for both demonstration purposes and serious long-term monitoring of memory corruption events.
 
-## Overview
+## 🌌 Background & Motivation
 
-This application provisions large memory blocks (default 10GB) and fills them with known patterns. It continuously scans the memory to detect bit flips that could be caused by cosmic rays or other sources of ionizing radiation. The system provides comprehensive logging, statistical analysis, and scientific reporting of detected events.
+This experiment originated from fascination with **cosmic rays causing spontaneous bit flips in computer memory**—a documented phenomenon where high-energy particles from space can alter individual bits in RAM, potentially causing software crashes, data corruption, or unexpected behavior.
 
-## Features
+### The Cosmic Ray Phenomenon
+Cosmic rays are high-energy particles (primarily protons) that constantly bombard Earth from outer space. When these particles strike computer memory, they can:
+- Flip individual bits from 0→1 or 1→0
+- Cause "soft errors" that don't damage hardware permanently  
+- Affect systems at sea level (~1 error per GB per month)
+- Increase dramatically with altitude (aircraft, satellites)
+- Potentially influence election results, cryptocurrency mining, and scientific computing
 
-- **Large Memory Allocation**: Allocates configurable amounts of memory (up to 100GB) with proper alignment
-- **Multiple Pattern Types**: Supports alternating bits, checksums, random data, and known sequences
-- **Real-time Monitoring**: Continuous scanning with configurable intervals
-- **Scientific Analysis**: Statistical correlation with cosmic ray flux data
-- **Comprehensive Logging**: JSON structured logs and human-readable reports  
-- **Data Visualization**: Generates scientific plots and statistical summaries
-- **Cross-platform**: Works on macOS, Linux, and Windows
+### From Research to Reality
+While the initial goal was pure cosmic ray detection, practical challenges led to a **dual-purpose design**:
 
-## Installation
+**🔬 Research Interest**: Can we detect actual cosmic ray-induced memory corruption on consumer hardware?
+- Answer: Theoretically yes, but requires months of data and statistical analysis
+- Most consumer systems lack ECC telemetry for definitive attribution
+- Many other sources cause identical memory corruption patterns
+
+**🎯 Practical Solution**: Can we demonstrate the concept and educate about the phenomenon?  
+- Answer: Absolutely! Demo mode with controlled fault injection provides:
+  - Reliable, observable bit flips for presentations and education
+  - Understanding of memory corruption detection techniques
+  - Appreciation for the cosmic ray phenomenon without waiting months for natural events
+
+### Why This Approach Works
+Rather than overselling our detection capabilities, this system:
+- **Separates detection from attribution**: We detect memory changes, then provide heuristic analysis
+- **Offers both modes**: Demo mode for education, Listen mode for patient research  
+- **Maintains scientific integrity**: Clear about what we can and cannot definitively determine
+- **Balances curiosity with practicality**: Satisfies interest in cosmic rays while being genuinely useful
+
+The result is a tool that respects both the fascinating science of cosmic ray interactions and the practical needs of demonstration and education.
+
+## 🔬 Scientific Approach
+
+**What this system actually does:**
+- Detects when memory contents change unexpectedly
+- Provides heuristic analysis to estimate likelihood of cosmic ray causation 
+- Separates raw detection from attribution analysis
+- Offers fault injection for reliable demonstration
+
+**What this system does NOT do:**
+- Definitively prove cosmic ray causation (requires specialized equipment)
+- Detect cosmic rays directly (measures secondary effects only)
+- Replace proper ECC memory or radiation detection equipment
+- Provide legally or scientifically binding cosmic ray attribution
+
+## 🎯 Use Cases
+
+### Demo Mode (`demo.json`)
+- **Purpose**: Educational demonstrations and proof-of-concept
+- **Duration**: 15 minutes (configurable)
+- **Memory**: 10% of system memory (capped at 2GB for laptop safety)  
+- **Fault Injection**: ENABLED by default (5 events/minute)
+- **Attribution**: Heuristic analysis with 70% confidence threshold
+- **Best For**: Presentations, education, testing
+
+### Listen Mode (`listen.json`)
+- **Purpose**: Long-term passive monitoring for research
+- **Duration**: 24 hours (configurable)
+- **Memory**: 25% of system memory (capped at 8GB for laptop safety)
+- **Fault Injection**: DISABLED by default (natural events only)
+- **Attribution**: High-confidence analysis (80% threshold)
+- **Best For**: Research, actual cosmic ray monitoring, system testing
+
+## 🚀 Quick Start
+
+### Run a 5-minute demo:
+```bash
+go run cmd/main.go -mode demo -demo-time 5m
+```
+
+### Generate and run with demo configuration:
+```bash
+go run cmd/main.go -generate-config demo     # Creates configs/demo.json
+go run cmd/main.go -mode demo                # Uses configs/demo.json
+```
+
+### Long-term monitoring:
+```bash
+go run cmd/main.go -generate-config listen   # Creates configs/listen.json  
+go run cmd/main.go -mode listen              # Uses configs/listen.json
+```
+
+### Use example configurations:
+```bash
+# Quick 5-second test with minimal memory
+go run cmd/main.go -config configs/examples/minimal-test.json
+
+# Extended demo session  
+go run cmd/main.go -config configs/examples/long-demo.json
+```
+
+## 🛠️ Installation
 
 ### Prerequisites
-- Go 1.19 or later
-- Sufficient RAM for memory allocation experiments
+- Go 1.19+ 
+- Linux or macOS (memory locking support)
+- Sufficient RAM for your chosen memory allocation
 
-### Building from Source
-
+### Build
 ```bash
 git clone https://github.com/dperkins/cosmic-rays.git
 cd cosmic-rays
-go mod tidy
-go build -o cosmic-rays ./cmd/cosmic-rays
+go mod download
+go build -o memorytest cmd/main.go
 ```
 
-## Usage
+## ⚙️ Configuration
 
-### Generate Default Configuration
+### Key Configuration Sections
 
-```bash
-./cosmic-rays -generate-config
-```
-
-This creates a `config.json` file with sensible defaults.
-
-### Run Experiment
-
-```bash
-./cosmic-rays
-```
-
-Or with a specific configuration:
-
-```bash
-./cosmic-rays -config custom-config.json
-```
-
-### Command Line Options
-
-- `-config <file>`: Configuration file path (default: config.json)
-- `-generate-config`: Generate default configuration and exit
-- `-version`: Show version information
-- `-quiet`: Suppress banner and non-essential output
-
-## Configuration
-
-The configuration file controls all experiment parameters:
-
+#### Memory Management
 ```json
 {
-  "memory_size": 10737418240,
-  "memory_alignment": 4096,
-  "use_locked_memory": true,
-  "duration": "24h0m0s",
-  "scan_interval": "1s",
-  "patterns_to_use": ["alternating", "checksum", "random", "known"],
-  "enable_ecc_detection": true,
-  "flip_threshold": 0.95,
-  "output_dir": "./output",
-  "log_level": "info",
-  "enable_visualization": true,
-  "report_interval": "1h0m0s",
-  "latitude": 37.7749,
-  "longitude": -122.4194,
-  "altitude": 52.0
+  "memory_size": 0,              // 0 = auto-size
+  "memory_size_auto": "10%",     // Use 10% of system memory
+  "use_locked_memory": true,     // Prevent swapping (graceful degradation)
+  "use_protected_memory": true   // Read-only protection (graceful degradation)
 }
 ```
 
-### Configuration Parameters
+#### Detection vs Attribution
+```json
+{
+  "enable_attribution": true,        // Enable heuristic cosmic ray analysis  
+  "attribution_threshold": 0.7,      // Confidence threshold (0.0-1.0)
+  "enable_ecc_telemetry": false      // Try to access real ECC data
+}
+```
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `memory_size` | int64 | Memory to allocate in bytes |
-| `memory_alignment` | int | Memory alignment (must be power of 2) |
-| `use_locked_memory` | bool | Use mlock() to prevent swapping |
-| `duration` | duration | Experiment duration |
-| `scan_interval` | duration | How often to scan memory |
-| `patterns_to_use` | []string | Memory patterns to test |
-| `enable_ecc_detection` | bool | Detect ECC memory correction |
-| `flip_threshold` | float64 | Statistical threshold (0.0-1.0) |
-| `output_dir` | string | Directory for output files |
-| `log_level` | string | Logging level (debug/info/warn/error) |
-| `enable_visualization` | bool | Generate plots and charts |
-| `report_interval` | duration | Statistics reporting interval |
-| `latitude` | float64 | Geographic latitude for correlation |
-| `longitude` | float64 | Geographic longitude |
-| `altitude` | float64 | Altitude in meters |
+#### Fault Injection (Demo Mode)
+```json
+{
+  "injection": {
+    "enabled": true,               // Enable fault injection
+    "profile": "mixed",           // "single", "multi", "burst", "mixed"
+    "rate": 5.0,                  // Events per minute
+    "burst_size": 3,              // Size of burst events
+    "random_seed": 0              // 0 = truly random
+  }
+}
+```
 
-## Memory Patterns
+## 📊 Understanding Results
 
-The system supports four types of memory patterns:
+### Event Detection
+The system detects when memory contents change from expected patterns:
+- **Raw Events**: Memory corruption detected (neutral observation)
+- **Attribution**: Heuristic analysis of likely causes
 
-### Alternating Patterns
-- Uses alternating bit patterns (0x55, 0xAA, 0x33, 0xCC, 0x0F, 0xF0)
-- Changes pattern every 1024 bytes to detect regional errors
-- High detectability, low entropy
+### Attribution Confidence Levels
+- **High (>80%)**: Strong heuristic indicators of cosmic ray characteristics
+- **Medium (>50%)**: Some cosmic ray indicators present  
+- **Low (<50%)**: Weak or conflicting indicators
 
-### Checksum Patterns  
-- Every 8th byte contains XOR checksum of previous 7 bytes
-- Provides self-validation capability
-- Medium entropy with built-in error detection
+### Attribution Factors
+- Single vs. multi-bit flips (cosmic rays typically cause single-bit flips)
+- Pattern type sensitivity
+- Timing analysis vs. known injections
+- Geographic/altitude correlation (if enabled)
+- ECC telemetry correlation (if available)
 
-### Random Patterns
-- Cryptographically strong random data
-- Maximum entropy, statistical baseline comparison
-- Harder to distinguish cosmic rays from other errors
+## 🔧 Advanced Usage
 
-### Known Sequences
-- Well-known patterns like DEADBEEF, CAFEBABE, powers of 2
-- Easy to validate, very high detectability
-- Good for controlled testing
+### Custom Configuration
+```bash
+# Create custom configuration from templates
+cp configs/demo.json configs/my-config.json
+# Edit configs/my-config.json as needed
+go run cmd/main.go -config configs/my-config.json
 
-## Output Files
+# Use example configurations
+go run cmd/main.go -config configs/examples/minimal-test.json
+go run cmd/main.go -config configs/examples/long-demo.json
+```
 
-The system generates several types of output in the specified output directory:
+### Command Line Options
+```bash
+Usage: ./memorytest [options]
 
-- `cosmic_rays_YYYYMMDD_HHMMSS.log`: Human-readable log file
-- `cosmic_rays_YYYYMMDD_HHMMSS.json`: Machine-readable JSON events
-- `statistics_YYYYMMDD_HHMMSS.json`: Statistical summary
-- `report_YYYYMMDD_HHMMSS.html`: Scientific report with visualizations
+  -config string
+        Configuration file path (default: auto-select configs/demo.json or configs/listen.json)
+  -generate-config string
+        Generate configuration file: 'demo' or 'listen' (saves to configs/ directory)
+  -mode string
+        Experiment mode: 'demo' or 'listen' (default "demo")
+  -demo-time string
+        Demo duration override (e.g. '5m', '30s')
+  -quiet
+        Suppress banner and non-essential output
+  -version
+        Show version and exit
+```
 
-## Scientific Methodology
+## 📈 Output and Logging
 
-### Detection Algorithm
-1. Memory blocks are initialized with known patterns
-2. Continuous scanning verifies pattern integrity
-3. Bit flips are classified as single-bit or multi-bit errors
-4. Statistical analysis correlates with cosmic ray flux data
-5. False positives from hardware/software errors are filtered
+### Console Output
+- Real-time experiment progress
+- Detection event summaries  
+- Attribution analysis results
+- Performance statistics
 
-### Cosmic Ray Attribution
-- Single-bit flips in predictable patterns are most likely cosmic rays
-- Multi-bit errors suggest hardware problems or software bugs
-- Geographic and altitude correlation with known cosmic ray flux
-- Temporal analysis for solar activity correlation
+### File Output 
+- `./output/` directory (configurable)
+- JSON structured logs
+- Event history and statistics
+- Performance metrics
 
-### Statistical Validation
-- Chi-square tests for randomness of flip distribution
-- Poisson distribution analysis for event timing
-- Confidence intervals for cosmic ray event rates
-- Comparison with published atmospheric cosmic ray data
+### Sample Output
+```
+🔬 Memory Corruption Detection Experiment
+==========================================
+Mode: demo
+Memory allocated: 512.0 MB
+Duration: 15m0s
+Scan strategy: full
+Patterns: [alternating checksum]
+Attribution enabled: true
+Fault injection: ENABLED (mixed profile, 5.0 events/min)
 
-## Performance Considerations
+🚀 Starting experiment...
 
-- **Memory Usage**: The application uses the configured amount plus ~10% overhead
-- **CPU Usage**: Scanning is CPU-intensive; adjust scan interval accordingly  
-- **Disk I/O**: Continuous logging can generate significant data
-- **System Impact**: Memory locking may affect system performance
+📊 Experiment Summary
+===================
+Total runtime: 15m2s
+Total scans: 902
+Events detected: 73
+Scans per minute: 59.9
+Events per minute: 4.8
+Total injections: 76
+Injection rate: 5.1/min
 
-## Expected Results
+🎯 Detection Results:
+• Events analyzed with heuristic attribution  
+• Attribution threshold: 70%
+```
 
-### Typical Cosmic Ray Rates
-- Sea level: ~1 flip per GB per hour
-- Higher altitudes: Exponentially higher rates
-- Solar activity affects rates by ±20%
-- Geographic variation due to magnetic field
+## 🧪 Technical Implementation
 
-### Detection Sensitivity
-- Single-bit flips: >99% detection rate
-- Pattern corruption: >95% cosmic ray attribution
-- Statistical significance: 95% confidence intervals
-- False positive rate: <1% with proper filtering
+### Architecture 
+- **Detection**: Memory scanning and change detection (pkg/detector)
+- **Attribution**: Heuristic analysis engine (separate from detection)
+- **Injection**: Controlled fault injection for demos (pkg/injection)
+- **Memory Management**: Safe allocation with protection (pkg/memory)
+- **Configuration**: Mode-based config system (internal/config)
 
-## Troubleshooting
+### Memory Protection
+- **mlock()**: Prevents memory from being swapped to disk
+- **mprotect()**: Read-only protection to detect unauthorized writes
+- **Graceful Degradation**: System continues if protection fails
 
-### Memory Allocation Errors
-- Reduce `memory_size` if allocation fails
-- Disable `use_locked_memory` on systems with limited lockable memory
-- Check available RAM with system monitoring tools
+### Scanning Strategies
+- **Full**: Complete memory scan (small allocations)
+- **Sampled**: Statistical sampling (large allocations)  
+- **Adaptive**: Adjusts based on system load (future enhancement)
 
-### Permission Errors  
-- Run with appropriate privileges for memory locking
-- Ensure output directory is writable
-- Check system limits for memory lock (`ulimit -l`)
+## ⚠️ Limitations and Disclaimers
 
-### Performance Issues
-- Increase `scan_interval` to reduce CPU usage
-- Disable visualization for long-running experiments
-- Use faster storage for output directory
+### Scientific Limitations
+1. **Not a cosmic ray detector**: Detects memory corruption, not cosmic rays directly
+2. **Heuristic attribution only**: Cannot definitively prove cosmic ray causation
+3. **Many other causes**: Software bugs, hardware errors, electromagnetic interference
+4. **No statistical significance**: Would require months/years of data for meaningful results
 
-## Contributing
+### Technical Limitations
+1. **ECC Memory**: Most consumer systems lack accessible ECC telemetry
+2. **Platform Dependent**: Memory protection may not work on all systems  
+3. **False Positives**: Software bugs can cause memory corruption
+4. **Resource Usage**: Uses significant RAM and CPU for scanning
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+### Use Case Warnings
+- **Not for production systems**: High memory usage affects performance
+- **Educational only**: Results not suitable for scientific publication without proper validation
+- **Demo mode**: Fault injection creates artificial events for demonstration
 
-## License
+## 🤝 Contributing
 
-MIT License - see LICENSE file for details.
+### Development Setup
+```bash
+git clone https://github.com/dperkins/cosmic-rays.git
+cd cosmic-rays
+go mod download
+go test ./...
+```
 
-## Scientific References
+### Areas for Contribution
+- Platform-specific ECC telemetry access
+- Advanced attribution algorithms  
+- Statistical analysis tools
+- Performance optimizations
+- Additional memory patterns
 
-- Ziegler, J.F. et al. "Terrestrial cosmic rays" IBM Journal of Research and Development (1996)
-- Normand, E. "Single event upset at ground level" IEEE Transactions on Nuclear Science (1996)
-- Baumann, R.C. "Radiation-induced soft errors in advanced semiconductor technologies" IEEE Transactions on Device and Materials Reliability (2005)
+## 📜 License
 
-## Acknowledgments
+MIT License - See LICENSE file for details.
 
-Developed for scientific research into cosmic ray effects on computer memory systems. Special thanks to the cosmic ray research community for published data and methodologies.
+## 🙏 Acknowledgments
+
+- Inspired by real cosmic ray detection research
+- Memory corruption detection techniques from systems research
+- Statistical methods from particle physics
+
+---
+
+**Remember**: This tool demonstrates memory corruption detection techniques and provides educational insights into cosmic ray effects on computer memory. For serious cosmic ray research, use proper scientific equipment and statistical analysis methods.
