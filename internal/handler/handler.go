@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/dperkins/cosmic-rays/internal/config"
 	"github.com/dperkins/cosmic-rays/pkg/detector"
@@ -24,12 +25,13 @@ func NewExperimentHandler(cfg *config.Config) *ExperimentHandler {
 	}
 }
 
-// Experiment represents the complete cosmic ray detection experiment
+// Experiment represents the complete memory corruption detection experiment
 type Experiment struct {
 	config        *config.Config
 	memoryManager *memory.Manager
-	detector      *detector.Scanner
+	scanner       *detector.Scanner
 	logger        *output.Logger
+	startTime     time.Time
 	stopChan      chan struct{}
 }
 
@@ -72,22 +74,18 @@ func (h *ExperimentHandler) InitializeExperiment() (*Experiment, error) {
 	}
 
 	// Initialize memory manager
-	memMgr, err := memory.NewManager(cfg.MemorySize, cfg.MemoryAlignment, cfg.UseLockedMemory)
+	memMgr, err := memory.NewManager(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize memory manager: %w", err)
 	}
 
 	// Initialize detector
-	det, err := detector.NewScanner(memMgr, cfg.ScanInterval.Duration, cfg.PatternsToUse)
-	if err != nil {
-		memMgr.Cleanup()
-		return nil, fmt.Errorf("failed to initialize detector: %w", err)
-	}
+	scanner := detector.NewScanner(cfg, memMgr)
 
 	// Initialize logger
 	logger, err := output.NewLogger(cfg.OutputDir, cfg.LogLevel)
 	if err != nil {
-		det.Close()
+
 		memMgr.Cleanup()
 		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
@@ -95,8 +93,9 @@ func (h *ExperimentHandler) InitializeExperiment() (*Experiment, error) {
 	return &Experiment{
 		config:        cfg,
 		memoryManager: memMgr,
-		detector:      det,
+		scanner:       scanner,
 		logger:        logger,
+		startTime:     time.Now(),
 		stopChan:      make(chan struct{}),
 	}, nil
 }
@@ -146,23 +145,27 @@ func (h *ExperimentHandler) Run(ctx context.Context, w io.Writer) error {
 
 // printHumanResults formats and displays human-readable experiment results
 func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experiment) {
-	stats := experiment.detector.GetStats()
+	stats := experiment.scanner.GetStats()
 
 	fmt.Fprintf(w, "\n=== EXPERIMENT RESULTS ===\n")
-	fmt.Fprintf(w, "Memory Monitored: %.1f MB\n", float64(experiment.config.MemorySize)/(1024*1024))
+	// Parse memory size for display
+	memSize, err := experiment.config.ParseMemorySize()
+	if err != nil {
+		memSize = 0
+	}
+	fmt.Fprintf(w, "Memory Monitored: %.1f MB\n", float64(memSize)/(1024*1024))
 	fmt.Fprintf(w, "Duration: %v\n", experiment.config.Duration.Duration)
-	fmt.Fprintf(w, "Total Scans: %v\n", stats["total_scans"])
-	fmt.Fprintf(w, "Bytes Scanned: %v\n", stats["bytes_scanned"])
-	fmt.Fprintf(w, "\n--- Bit Flip Analysis ---\n")
-	fmt.Fprintf(w, "Total Bit Flips: %v\n", stats["total_bit_flips"])
-	fmt.Fprintf(w, "Single Bit Flips: %v\n", stats["single_bit_flips"])
-	fmt.Fprintf(w, "Multi Bit Flips: %v\n", stats["multiple_bit_flips"])
-	fmt.Fprintf(w, "Flip Rate: %.6f per bit\n", stats["bit_flip_rate"])
+	fmt.Fprintf(w, "Total Scans: %v\n", stats.ScanCount)
+	fmt.Fprintf(w, "Events Per Minute: %.2f\n", stats.EventsPerMinute)
+	fmt.Fprintf(w, "\n--- Detection Analysis ---\n")
+	fmt.Fprintf(w, "Total Events: %v\n", stats.EventCount)
+	fmt.Fprintf(w, "Scans Per Minute: %.2f\n", stats.ScansPerMinute)
 
-	if flips, ok := stats["total_bit_flips"].(int64); ok && flips > 0 {
-		fmt.Fprintf(w, "\n*** POTENTIAL COSMIC RAY EVENTS DETECTED! ***\n")
-		fmt.Fprintf(w, "NOTE: Most detected 'flips' are likely memory initialization\n")
-		fmt.Fprintf(w, "artifacts rather than actual cosmic ray events.\n")
+	if stats.EventCount > 0 {
+		fmt.Fprintf(w, "\n*** MEMORY EVENTS DETECTED! ***\n")
+		fmt.Fprintf(w, "NOTE: Events may be injected faults (in demo mode) or\n")
+		fmt.Fprintf(w, "genuine memory corruption. Attribution analysis\n")
+		fmt.Fprintf(w, "provides heuristic likelihood estimates.\n")
 		fmt.Fprintf(w, "\nFor true cosmic ray detection, consider:\n")
 		fmt.Fprintf(w, "- ECC memory to distinguish single vs multi-bit errors\n")
 		fmt.Fprintf(w, "- Memory protection to prevent program interference\n")
@@ -174,15 +177,25 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 	}
 
 	// Log to file as well
-	experiment.logger.LogStatistics(stats)
+	// Convert ScanStats to map format for logger
+	statsMap := map[string]interface{}{
+		"scan_count":          stats.ScanCount,
+		"event_count":         stats.EventCount,
+		"last_scan":           stats.LastScan,
+		"scans_per_minute":    stats.ScansPerMinute,
+		"events_per_minute":   stats.EventsPerMinute,
+		"attribution_enabled": stats.AttributionEnabled,
+		"running_time":        stats.RunningTime,
+	}
+	experiment.logger.LogStatistics(statsMap)
 	fmt.Fprintf(w, "\nDetailed statistics logged to output directory.\n")
 }
 
 // RunWithContext starts the experiment detection process with context support
 func (e *Experiment) RunWithContext(ctx context.Context) error {
 	// Start the detection process
-	if err := e.detector.Start(e.stopChan); err != nil {
-		return fmt.Errorf("failed to start detector: %w", err)
+	if err := e.scanner.Start(ctx); err != nil {
+		return fmt.Errorf("failed to start scanner: %w", err)
 	}
 
 	e.logger.Info("Cosmic ray detection experiment started", map[string]interface{}{
@@ -219,8 +232,8 @@ func (e *Experiment) Stop() {
 
 // Cleanup releases all resources used by the experiment
 func (e *Experiment) Cleanup() {
-	if e.detector != nil {
-		e.detector.Close()
+	if e.scanner != nil {
+		e.scanner.Close()
 	}
 	if e.memoryManager != nil {
 		e.memoryManager.Cleanup()
