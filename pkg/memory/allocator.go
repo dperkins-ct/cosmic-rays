@@ -358,6 +358,20 @@ func (b *Block) VerifyPattern(pattern []byte) ([]BitFlip, error) {
 	return bitFlips, nil
 }
 
+// RepairFlips restores the expected byte value for each detected bit flip,
+// so subsequent scans do not re-count the same corruption as a new event.
+func (b *Block) RepairFlips(flips []BitFlip, pattern []byte) {
+	if len(pattern) == 0 {
+		return
+	}
+	for _, flip := range flips {
+		i := int(flip.Offset - b.offset)
+		if i >= 0 && i < len(b.data) {
+			b.data[i] = pattern[i%len(pattern)]
+		}
+	}
+}
+
 // GetSize returns the size of the block in bytes
 func (b *Block) GetSize() int64 {
 	return b.size

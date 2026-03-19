@@ -683,6 +683,11 @@ func (s *Scanner) performScan() error {
 			return fmt.Errorf("failed to verify pattern in block %d: %w", blockIndex, err)
 		}
 
+		// Repair flipped bytes immediately so subsequent scans don't re-count them.
+		if len(bitFlips) > 0 {
+			block.RepairFlips(bitFlips, pattern)
+		}
+
 		bytesScanned += block.GetSize()
 
 		if len(bitFlips) > 0 {
