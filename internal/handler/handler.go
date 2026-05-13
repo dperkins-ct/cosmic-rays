@@ -121,8 +121,12 @@ func (h *ExperimentHandler) RunExperiment(ctx context.Context, w io.Writer, expe
 		}
 		fmt.Fprintf(w, "\n=== EXPERIMENT COMPLETED SUCCESSFULLY ===\n")
 		h.printHumanResults(w, experiment)
-	case <-ctx.Done():
-		fmt.Fprintf(w, "\n=== EXPERIMENT INTERRUPTED ===\n")
+	case <-expCtx.Done():
+		if expCtx.Err() == context.DeadlineExceeded {
+			fmt.Fprintf(w, "\n=== EXPERIMENT COMPLETED SUCCESSFULLY ===\n")
+		} else {
+			fmt.Fprintf(w, "\n=== EXPERIMENT INTERRUPTED ===\n")
+		}
 		experiment.Stop()
 		<-resultChan // Wait for experiment to stop
 		h.printHumanResults(w, experiment)
