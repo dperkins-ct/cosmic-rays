@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dperkins/cosmic-rays/internal/config"
@@ -159,7 +160,7 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 		memSize = 0
 	}
 	fmt.Fprintf(w, "Memory Monitored: %.1f MB\n", float64(memSize)/(1024*1024))
-	fmt.Fprintf(w, "Duration: %v\n", experiment.config.Duration.Duration)
+	fmt.Fprintf(w, "Duration: %s\n", formatHumanDuration(stats.RunningTime))
 	fmt.Fprintf(w, "Total Scans: %v\n", stats.ScanCount)
 	fmt.Fprintf(w, "Events Per Minute: %.2f\n", stats.EventsPerMinute)
 	fmt.Fprintf(w, "\n--- Detection Analysis ---\n")
@@ -208,6 +209,46 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 	}
 	experiment.logger.LogStatistics(statsMap)
 	fmt.Fprintf(w, "\nDetailed statistics logged to output directory.\n")
+}
+
+func formatHumanDuration(duration time.Duration) string {
+	if duration < 0 {
+		duration = -duration
+	}
+
+	duration = duration.Round(time.Second)
+	if duration < time.Second {
+		return "less than 1 second"
+	}
+
+	parts := make([]string, 0, 3)
+	hours := duration / time.Hour
+	if hours > 0 {
+		parts = append(parts, formatDurationPart(int(hours), "hour"))
+		duration -= hours * time.Hour
+	}
+	minutes := duration / time.Minute
+	if minutes > 0 {
+		parts = append(parts, formatDurationPart(int(minutes), "minute"))
+		duration -= minutes * time.Minute
+	}
+	seconds := duration / time.Second
+	if seconds > 0 && len(parts) < 2 {
+		parts = append(parts, formatDurationPart(int(seconds), "second"))
+	}
+
+	if len(parts) == 0 {
+		return "less than 1 second"
+	}
+
+	return strings.Join(parts, " ")
+}
+
+func formatDurationPart(value int, unit string) string {
+	if value == 1 {
+		return fmt.Sprintf("%d %s", value, unit)
+	}
+	return fmt.Sprintf("%d %ss", value, unit)
 }
 
 // RunWithContext starts the experiment detection process with context support

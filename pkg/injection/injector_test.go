@@ -3,19 +3,9 @@ package injection
 import (
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/dperkins/cosmic-rays/internal/config"
 )
-
-// memPtr returns the uintptr of the first byte of a slice, matching the
-// unsafe cast used in NewManager (allocator.go).
-func memPtr(mem []byte) uintptr {
-	if len(mem) == 0 {
-		return 0
-	}
-	return uintptr(unsafe.Pointer(&mem[0]))
-}
 
 // ---------------------------------------------------------------------------
 // NewInjector
@@ -39,7 +29,7 @@ func TestNewInjector(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			mem := make([]byte, 1024)
-			inj := NewInjector(tc.cfg, memPtr(mem), int64(len(mem)))
+			inj := NewInjector(tc.cfg, mem, int64(len(mem)))
 			if inj == nil {
 				t.Fatal("NewInjector returned nil")
 			}
@@ -66,7 +56,7 @@ func TestInjector_IsInjectionEnabled(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			mem := make([]byte, 64)
-			inj := NewInjector(config.InjectionConfig{Enabled: tc.configEnabled}, memPtr(mem), int64(len(mem)))
+			inj := NewInjector(config.InjectionConfig{Enabled: tc.configEnabled}, mem, int64(len(mem)))
 			inj.active = tc.setActive
 			if got := inj.IsInjectionEnabled(); got != tc.want {
 				t.Errorf("IsInjectionEnabled=%v, want %v", got, tc.want)
@@ -91,7 +81,7 @@ func TestInjector_GetInjectionHistory(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			mem := make([]byte, 64)
-			inj := NewInjector(config.InjectionConfig{Enabled: true, RandomSeed: 1}, memPtr(mem), int64(len(mem)))
+			inj := NewInjector(config.InjectionConfig{Enabled: true, RandomSeed: 1}, mem, int64(len(mem)))
 			for i := 0; i < tc.preload; i++ {
 				inj.injectionPoints = append(inj.injectionPoints, InjectionPoint{
 					Offset: int64(i), Timestamp: time.Now(),
@@ -121,9 +111,11 @@ func TestInjector_GetStats(t *testing.T) {
 	tests := map[string]struct {
 		injectedCount int64
 		profile       string
+		startedAgo    time.Duration
+		wantRate      float64
 	}{
-		"zero injections single profile": {injectedCount: 0, profile: "single"},
-		"five injections burst profile":  {injectedCount: 5, profile: "burst"},
+		"zero injections single profile": {injectedCount: 0, profile: "single", startedAgo: time.Minute, wantRate: 0},
+		"five injections in 30 seconds":  {injectedCount: 5, profile: "burst", startedAgo: 30 * time.Second, wantRate: 10},
 	}
 
 	for name, tc := range tests {
@@ -131,15 +123,23 @@ func TestInjector_GetStats(t *testing.T) {
 			mem := make([]byte, 64)
 			inj := NewInjector(
 				config.InjectionConfig{Enabled: true, Profile: tc.profile, RandomSeed: 1},
-				memPtr(mem), int64(len(mem)),
+				mem, int64(len(mem)),
 			)
 			inj.injectedCount = tc.injectedCount
+			inj.startedAt = time.Now().Add(-tc.startedAgo)
 			stats := inj.GetStats()
 			if stats.TotalInjected != tc.injectedCount {
 				t.Errorf("TotalInjected=%d, want %d", stats.TotalInjected, tc.injectedCount)
 			}
 			if stats.ActiveProfile != tc.profile {
 				t.Errorf("ActiveProfile=%q, want %q", stats.ActiveProfile, tc.profile)
+			}
+			if tc.wantRate == 0 {
+				if stats.InjectionRate != 0 {
+					t.Errorf("InjectionRate=%v, want 0", stats.InjectionRate)
+				}
+			} else if stats.InjectionRate < tc.wantRate-0.5 || stats.InjectionRate > tc.wantRate+0.5 {
+				t.Errorf("InjectionRate=%v, want about %v", stats.InjectionRate, tc.wantRate)
 			}
 		})
 	}
@@ -161,7 +161,7 @@ func TestInjector_Stop(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			mem := make([]byte, 64)
-			inj := NewInjector(config.InjectionConfig{Enabled: true, RandomSeed: 1}, memPtr(mem), int64(len(mem)))
+			inj := NewInjector(config.InjectionConfig{Enabled: true, RandomSeed: 1}, mem, int64(len(mem)))
 			inj.active = tc.startActive
 			inj.Stop()
 			if inj.active != tc.wantActive {
@@ -194,7 +194,7 @@ func TestInjector_injectSingleBitFlip(t *testing.T) {
 
 			inj := NewInjector(
 				config.InjectionConfig{Enabled: true, RandomSeed: 42},
-				memPtr(mem), int64(len(mem)),
+				mem, int64(len(mem)),
 			)
 			inj.active = tc.setActive
 

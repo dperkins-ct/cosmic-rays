@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/dperkins/cosmic-rays/internal/config"
 	"github.com/dperkins/cosmic-rays/pkg/injection"
@@ -119,8 +118,7 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 
 	// Initialize injection system if enabled
 	if cfg.Injection.Enabled {
-		memPtr := uintptr(unsafe.Pointer(&memory[0]))
-		injector := injection.NewInjector(cfg.Injection, memPtr, memorySize)
+		injector := injection.NewInjector(cfg.Injection, memory, memorySize)
 		manager.injector = injector
 	}
 

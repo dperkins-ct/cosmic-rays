@@ -7,7 +7,6 @@ import (
 	mathrand "math/rand"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/dperkins/cosmic-rays/internal/config"
 )
@@ -16,10 +15,11 @@ import (
 type Injector struct {
 	config    config.InjectionConfig
 	rng       *mathrand.Rand
-	memory    uintptr
+	memory    []byte
 	memoryLen int64
 	active    bool
 	mutex     sync.RWMutex
+	startedAt time.Time
 
 	// Statistics
 	injectedCount   int64
@@ -47,7 +47,7 @@ type InjectionStats struct {
 }
 
 // NewInjector creates a new fault injector
-func NewInjector(cfg config.InjectionConfig, memory uintptr, memoryLen int64) *Injector {
+func NewInjector(cfg config.InjectionConfig, memory []byte, memoryLen int64) *Injector {
 	var rng *mathrand.Rand
 	if cfg.RandomSeed != 0 {
 		rng = mathrand.New(mathrand.NewSource(cfg.RandomSeed))
@@ -87,6 +87,7 @@ func (i *Injector) Start(ctx context.Context) error {
 		return fmt.Errorf("injector already active")
 	}
 	i.active = true
+	i.startedAt = time.Now()
 	i.mutex.Unlock()
 
 	fmt.Printf("Starting fault injector with profile: %s, rate: %.1f/min\n", i.config.Profile, i.config.Rate)
@@ -106,21 +107,22 @@ func (i *Injector) GetStats() InjectionStats {
 	i.mutex.RLock()
 	defer i.mutex.RUnlock()
 
-	// Calculate recent injection rate (last 5 minutes)
-	fiveMinAgo := time.Now().Add(-5 * time.Minute)
-	recentCount := 0
+	// Calculate observed injections per minute over the current run.
 	var recentPoints []InjectionPoint
 
 	for _, point := range i.injectionPoints {
-		if point.Timestamp.After(fiveMinAgo) {
-			recentCount++
-			if len(recentPoints) < 10 { // return up to 10 recent points
-				recentPoints = append(recentPoints, point)
-			}
+		if len(recentPoints) < 10 { // return up to 10 recent points
+			recentPoints = append(recentPoints, point)
 		}
 	}
 
-	rate := float64(recentCount) * 12.0 // convert to per-hour rate
+	rate := 0.0
+	if !i.startedAt.IsZero() {
+		elapsedMinutes := time.Since(i.startedAt).Minutes()
+		if elapsedMinutes > 0 {
+			rate = float64(i.injectedCount) / elapsedMinutes
+		}
+	}
 
 	return InjectionStats{
 		TotalInjected: i.injectedCount,
@@ -287,19 +289,17 @@ func (i *Injector) injectSingleBitFlip() error {
 
 	// Choose random offset
 	offset := i.rng.Int63n(i.memoryLen)
-
-	// Get pointer to byte
-	bytePtr := (*byte)(unsafe.Pointer(i.memory + uintptr(offset)))
+	index := int(offset)
 
 	// Read current value
-	originalValue := *bytePtr
+	originalValue := i.memory[index]
 
 	// Choose random bit to flip
 	bitPos := uint(i.rng.Intn(8))
 
 	// Flip the bit
 	newValue := originalValue ^ (1 << bitPos)
-	*bytePtr = newValue
+	i.memory[index] = newValue
 
 	// Record injection point
 	point := InjectionPoint{
