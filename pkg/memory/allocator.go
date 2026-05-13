@@ -97,7 +97,7 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		memory:     memory,
 		size:       memorySize,
 		useMlock:   cfg.UseLockedMemory,
-		useProtect: cfg.UseProtectedMemory,
+		useProtect: false,
 		allocTime:  time.Now(),
 		mode:       cfg.Mode,
 	}
@@ -110,12 +110,11 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		}
 	}
 
-	// Apply memory protection if requested
+	// The scanner initializes and repairs the monitored region, and demo mode may
+	// also inject controlled writes. Marking the Go-managed slice read-only causes
+	// unrecoverable SIGBUS/SIGSEGV faults instead of a normal Go error.
 	if cfg.UseProtectedMemory {
-		if err := manager.protectMemory(); err != nil {
-			// Don't fail, just warn - degrade gracefully
-			fmt.Printf("Warning: Failed to protect memory: %v (continuing without mprotect)\n", err)
-		}
+		fmt.Printf("Warning: Memory protection is currently incompatible with the managed experiment buffer; continuing without mprotect\n")
 	}
 
 	// Initialize injection system if enabled

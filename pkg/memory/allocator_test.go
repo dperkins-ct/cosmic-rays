@@ -3,6 +3,8 @@ package memory
 import (
 	"testing"
 	"time"
+
+	"github.com/dperkins/cosmic-rays/internal/config"
 )
 
 // ---------------------------------------------------------------------------
@@ -265,6 +267,27 @@ func TestBlock_RepairFlips_OutOfBoundsOffset(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewManager_DisablesUnsupportedProtectionGracefully(t *testing.T) {
+	cfg := config.DefaultDemoConfig()
+	cfg.MemorySize = "1KB"
+	cfg.UseLockedMemory = false
+	cfg.UseProtectedMemory = true
+
+	manager, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager returned error: %v", err)
+	}
+	defer manager.Cleanup()
+
+	stats := manager.GetStats()
+	if stats.UseProtection {
+		t.Error("UseProtection=true, want false when protection is degraded gracefully")
+	}
+	if stats.IsProtected {
+		t.Error("IsProtected=true, want false when protection is degraded gracefully")
 	}
 }
 
