@@ -20,6 +20,16 @@ type ExperimentHandler struct {
 	config *config.Config
 }
 
+const (
+	handlerANSIReset  = "\033[0m"
+	handlerANSIBold   = "\033[1m"
+	handlerANSIDim    = "\033[2m"
+	handlerANSIGreen  = "\033[32m"
+	handlerANSIYellow = "\033[33m"
+	handlerANSIRed    = "\033[31m"
+	handlerANSICyan   = "\033[36m"
+)
+
 // NewExperimentHandler creates a new experiment handler
 func NewExperimentHandler(cfg *config.Config) *ExperimentHandler {
 	return &ExperimentHandler{
@@ -120,13 +130,13 @@ func (h *ExperimentHandler) RunExperiment(ctx context.Context, w io.Writer, expe
 		if err != nil {
 			return fmt.Errorf("experiment failed: %w", err)
 		}
-		fmt.Fprintf(w, "\n=== EXPERIMENT COMPLETED SUCCESSFULLY ===\n")
+		fmt.Fprintf(w, "\n%s\n", h.styleStatus(w, "=== EXPERIMENT COMPLETED SUCCESSFULLY ===", handlerANSIGreen))
 		h.printHumanResults(w, experiment)
 	case <-expCtx.Done():
 		if expCtx.Err() == context.DeadlineExceeded {
-			fmt.Fprintf(w, "\n=== EXPERIMENT COMPLETED SUCCESSFULLY ===\n")
+			fmt.Fprintf(w, "\n%s\n", h.styleStatus(w, "=== EXPERIMENT COMPLETED SUCCESSFULLY ===", handlerANSIGreen))
 		} else {
-			fmt.Fprintf(w, "\n=== EXPERIMENT INTERRUPTED ===\n")
+			fmt.Fprintf(w, "\n%s\n", h.styleStatus(w, "=== EXPERIMENT INTERRUPTED ===", handlerANSIYellow))
 		}
 		experiment.Stop()
 		<-resultChan // Wait for experiment to stop
@@ -153,35 +163,35 @@ func (h *ExperimentHandler) Run(ctx context.Context, w io.Writer) error {
 func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experiment) {
 	stats := experiment.scanner.GetStats()
 
-	fmt.Fprintf(w, "\n=== EXPERIMENT RESULTS ===\n")
+	fmt.Fprintf(w, "\n%s\n", h.styleSection(w, "=== EXPERIMENT RESULTS ==="))
 	// Parse memory size for display
 	memSize, err := experiment.config.ParseMemorySize()
 	if err != nil {
 		memSize = 0
 	}
-	fmt.Fprintf(w, "Memory Monitored: %.1f MB\n", float64(memSize)/(1024*1024))
-	fmt.Fprintf(w, "Duration: %s\n", formatHumanDuration(stats.RunningTime))
-	fmt.Fprintf(w, "Total Scans: %v\n", stats.ScanCount)
-	fmt.Fprintf(w, "Events Per Minute: %.2f\n", stats.EventsPerMinute)
-	fmt.Fprintf(w, "\n--- Detection Analysis ---\n")
-	fmt.Fprintf(w, "Total Events: %v\n", stats.EventCount)
-	fmt.Fprintf(w, "Scans Per Minute: %.2f\n", stats.ScansPerMinute)
+	fmt.Fprintf(w, "%s %.1f MB\n", h.styleLabel(w, "Memory Monitored:"), float64(memSize)/(1024*1024))
+	fmt.Fprintf(w, "%s %s\n", h.styleLabel(w, "Duration:"), formatHumanDuration(stats.RunningTime))
+	fmt.Fprintf(w, "%s %v\n", h.styleLabel(w, "Total Scans:"), stats.ScanCount)
+	fmt.Fprintf(w, "%s %.2f\n", h.styleLabel(w, "Events Per Minute:"), stats.EventsPerMinute)
+	fmt.Fprintf(w, "\n%s\n", h.styleSubsection(w, "--- Detection Analysis ---"))
+	fmt.Fprintf(w, "%s %v\n", h.styleLabel(w, "Total Events:"), stats.EventCount)
+	fmt.Fprintf(w, "%s %.2f\n", h.styleLabel(w, "Scans Per Minute:"), stats.ScansPerMinute)
 
 	// Display injection statistics if available
 	if stats.InjectionStats != nil {
 		if injStats, ok := stats.InjectionStats.(injection.InjectionStats); ok {
-			fmt.Fprintf(w, "\n--- Fault Injection Analysis ---\n")
-			fmt.Fprintf(w, "Injection Profile: %s\n", injStats.ActiveProfile)
-			fmt.Fprintf(w, "Total Injections: %d\n", injStats.TotalInjected)
-			fmt.Fprintf(w, "Injection Rate: %.2f per minute\n", injStats.InjectionRate)
+			fmt.Fprintf(w, "\n%s\n", h.styleSubsection(w, "--- Fault Injection Analysis ---"))
+			fmt.Fprintf(w, "%s %s\n", h.styleLabel(w, "Injection Profile:"), injStats.ActiveProfile)
+			fmt.Fprintf(w, "%s %d\n", h.styleLabel(w, "Total Injections:"), injStats.TotalInjected)
+			fmt.Fprintf(w, "%s %.2f per minute\n", h.styleLabel(w, "Injection Rate:"), injStats.InjectionRate)
 			if !injStats.LastInjection.IsZero() {
-				fmt.Fprintf(w, "Last Injection: %v\n", injStats.LastInjection.Format("15:04:05"))
+				fmt.Fprintf(w, "%s %v\n", h.styleLabel(w, "Last Injection:"), injStats.LastInjection.Format("15:04:05"))
 			}
 		}
 	}
 
 	if stats.EventCount > 0 {
-		fmt.Fprintf(w, "\n*** MEMORY EVENTS DETECTED! ***\n")
+		fmt.Fprintf(w, "\n%s\n", h.styleEventNotice(w, "✓ Memory events detected during monitoring"))
 		fmt.Fprintf(w, "NOTE: Events may be injected faults (in demo mode) or\n")
 		fmt.Fprintf(w, "genuine memory corruption. Attribution analysis\n")
 		fmt.Fprintf(w, "provides heuristic likelihood estimates.\n")
@@ -191,7 +201,7 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 		fmt.Fprintf(w, "- Longer observation periods (days/weeks)\n")
 		fmt.Fprintf(w, "- Statistical analysis of flip patterns\n")
 	} else {
-		fmt.Fprintf(w, "\n*** No bit flips detected during monitoring period ***\n")
+		fmt.Fprintf(w, "\n%s\n", h.styleEventNotice(w, "✓ No memory events detected during monitoring"))
 		fmt.Fprintf(w, "This suggests good memory stability or short observation time.\n")
 	}
 
@@ -208,7 +218,49 @@ func (h *ExperimentHandler) printHumanResults(w io.Writer, experiment *Experimen
 		"injection_stats":     stats.InjectionStats,
 	}
 	experiment.logger.LogStatistics(statsMap)
-	fmt.Fprintf(w, "\nDetailed statistics logged to output directory.\n")
+	fmt.Fprintf(w, "\n%s\n", h.styleLabel(w, "Detailed statistics logged to output directory."))
+}
+
+func (h *ExperimentHandler) styleSection(w io.Writer, text string) string {
+	return h.applyColor(w, text, handlerANSICyan+handlerANSIBold)
+}
+
+func (h *ExperimentHandler) styleSubsection(w io.Writer, text string) string {
+	return h.applyColor(w, text, handlerANSICyan)
+}
+
+func (h *ExperimentHandler) styleLabel(w io.Writer, text string) string {
+	return h.applyColor(w, text, handlerANSIBold)
+}
+
+func (h *ExperimentHandler) styleStatus(w io.Writer, text, color string) string {
+	return h.applyColor(w, text, color+handlerANSIBold)
+}
+
+func (h *ExperimentHandler) styleEventNotice(w io.Writer, text string) string {
+	return h.applyColor(w, text, handlerANSICyan+handlerANSIDim)
+}
+
+func (h *ExperimentHandler) applyColor(w io.Writer, text, color string) string {
+	if !supportsColorWriter(w) {
+		return text
+	}
+	return color + text + handlerANSIReset
+}
+
+func supportsColorWriter(w io.Writer) bool {
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	file, ok := w.(*os.File)
+	if !ok || file == nil {
+		return false
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
 func formatHumanDuration(duration time.Duration) string {
